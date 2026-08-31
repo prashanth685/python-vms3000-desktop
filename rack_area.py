@@ -1,26 +1,22 @@
-"""
-rack_area.py — VMS 3000  •  Professional Rack Canvas
-Matches actual VMS-3000 hardware UI:
-  • Three-section PSM column on the left
-  • 12 slot cards with faceplate, grip texture, LED, connector pins
-  • Selected slot glows amber
-  • VMM-6M slots render a pixel-accurate replica of the reference image
-  • When a VMM-6M slot is SELECTED (clicked) it flips to a dark/inverted display
-"""
-
 import tkinter as tk
 import tkinter.font as tkfont
 from theme import T
 import sys
 import os
 import math
+import traceback
 from PIL import Image, ImageTk
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from popups.configuration_settings import ConfigurationSettingsPopup
-from popups.monitors import ModuleSelectionPopup
+from popups.monitors import CascadingMenu
 from popups.module_switch_confirmation import ModuleSwitchConfirmationPopup
 from snapshot.racksnapshot import get_module_config, is_image_display_module
+from points.point_options import PointOptionsContextMenu
+from points.setpoins import SetpointsDialog
+from points.proximiter12m_ridial import ProximityMonitor3000ConfigDialog
+from points.relay_config import RelayConfigDialog
+from points.sixm_option import SixMOptionsDialog
 
 SLOT_COUNT = 12
 
@@ -28,6 +24,19 @@ SLOT_COUNT = 12
 DIS_MODULE = "3000/12M/DIS"
 VMM_MODULE = "VMM-6M"   # single-slot image (existing behaviour)
 RLY_MODULE = "3000/RLY"  # single-slot Relay module image (fallback exact name)
+SIXM_MODULE = "3000/6M"  # 3000/6M module
+
+
+def _is_6m_module(module: str) -> bool:
+    """
+    Check if module is a 3000/6M module.
+    """
+    if not module:
+        return False
+    if module == SIXM_MODULE:
+        return True
+    upper = module.upper()
+    return "6M" in upper and "3000" in upper
 
 
 def _is_relay_module(module: str) -> bool:
@@ -43,6 +52,67 @@ def _is_relay_module(module: str) -> bool:
         return True
     upper = module.upper()
     return "RLY" in upper or "RELAY" in upper
+
+
+def _find_image_case_insensitive(base_dir, filename, subfolders):
+    """
+    Search a list of subfolders (relative to base_dir) for `filename`,
+    ignoring case. Returns the first match found on disk, or None.
+
+    subfolders: list of tuples, e.g. [('src', 'images'), ('images',), ()]
+    An empty tuple () means "look directly in base_dir".
+    """
+    target = filename.lower()
+    for sub in subfolders:
+        folder = os.path.join(base_dir, *sub) if sub else base_dir
+        if not os.path.isdir(folder):
+            continue
+        try:
+            entries = os.listdir(folder)
+        except OSError:
+            continue
+        for f in entries:
+            if f.lower() == target:
+                return os.path.join(folder, f)
+    return None
+
+
+def _load_photo(base_dir, filename, target_w, target_h, label=""):
+    import traceback
+    from PIL import Image, ImageTk
+    import os
+
+    img_path = os.path.join(base_dir, "src", "images", filename)
+
+    print(f"Loading image from: {img_path}")
+
+    if not os.path.exists(img_path):
+        print(f"Image not found: {img_path}")
+        return None
+
+    try:
+        img = Image.open(img_path).convert("RGB")
+
+        # Convert float to int
+        target_w = int(round(target_w))
+        target_h = int(round(target_h))
+
+        if target_w < 1:
+            target_w = 1
+        if target_h < 1:
+            target_h = 1
+
+        img = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+        photo = ImageTk.PhotoImage(img)
+
+        print(f"Loaded {filename} ({target_w} x {target_h})")
+
+        return photo
+
+    except Exception:
+        traceback.print_exc()
+        return None
 
 
 class RackArea:
@@ -96,10 +166,71 @@ class RackArea:
     def get_slot_data(self) -> dict:
         return dict(self._slot_data)
 
+    def save_configuration(self, name: str = None):
+        """Save current rack configuration to local system."""
+        import json
+        import datetime
+        from tkinter import filedialog, messagebox
+
+        if not name:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_name = f"rack_config_{timestamp}.json"
+        else:
+            default_name = f"{name}.json"
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            initialfile=default_name,
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            parent=self._canvas
+        )
+
+        if file_path:
+            try:
+                config = {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "slot_data": self._slot_data,
+                    "slot_count": SLOT_COUNT
+                }
+                with open(file_path, 'w') as f:
+                    json.dump(config, f, indent=2)
+                messagebox.showinfo("Save Configuration", f"Configuration saved to {file_path}", parent=self._canvas)
+                return file_path
+            except Exception as e:
+                messagebox.showerror("Save Error", f"Failed to save configuration: {e}", parent=self._canvas)
+                return None
+        return None
+
+    def load_configuration(self):
+        """Load rack configuration from local system."""
+        import json
+        from tkinter import filedialog, messagebox
+
+        file_path = filedialog.askopenfilename(
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            parent=self._canvas
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'r') as f:
+                    config = json.load(f)
+
+                self._slot_data.clear()
+                self._slot_data.update(config.get("slot_data", {}))
+                self._selected = None
+                self.draw()
+                messagebox.showinfo("Load Configuration", f"Configuration loaded from {file_path}", parent=self._canvas)
+                return config
+            except Exception as e:
+                messagebox.showerror("Load Error", f"Failed to load configuration: {e}", parent=self._canvas)
+                return None
+        return None
+
     # ── Layout constants ────────────────────────────────────────────
 
     def _layout(self, W: int, H: int) -> dict:
-        PSM_W   = 110
+        PSM_W   = 140  # ← Increased width for PSM (0-index) column images
         PAD_X   = 14
         TOP_Y   = 32
         PAD_BOT = 10
@@ -142,7 +273,7 @@ class RackArea:
             module   = self._slot_data.get(key)
             if module == DIS_MODULE:
                 self._draw_dis_module(c, L, slot)
-                skip_next = True   # slot+1 is absorbed into the merged card
+                skip_next = True
             else:
                 self._draw_slot(c, L, slot)
 
@@ -154,8 +285,6 @@ class RackArea:
         x2 = L["W"] - L["PAD_X"]
         y2 = y1 + L["SHELL_H"]
 
-        # Outer shell body — no border/shadow on any of the 4 sides
-        # (top strip, left/right rails, and drop-shadow all removed).
         c.create_rectangle(x1, y1, x2, y2,
                             fill=T["rack_shell_bot"],
                             outline="",
@@ -168,23 +297,12 @@ class RackArea:
     # ── Slot number headers ─────────────────────────────────────────
 
     def _draw_slot_headers(self, c: tk.Canvas, L: dict):
-        """
-        Draw slot numbers above each card.
-        Rules:
-          • Slot 1 header is always hidden (config slot, no number shown).
-          • For a DIS double-slot at odd slot N:  show N centred over the
-            merged pair, hide N+1 completely.
-          • For VMM-6M single slots: normal single-slot number.
-          • Selected slot number is dark (#cc2222), unselected is gray (#888888).
-          • Display numbers start from 2 (slots 2-12 display as 2-12).
-        """
         skip_next = False
         for i in range(1, SLOT_COUNT + 1):
             if skip_next:
                 skip_next = False
                 continue
 
-            # Slot 1 is the PSM/config card — no header number
             if i == 1:
                 continue
 
@@ -192,21 +310,21 @@ class RackArea:
             module = self._slot_data.get(key)
             is_selected = (self._selected == key)
 
-            # Dark color for selected, gray for unselected
             fill_color = "#cc2222" if is_selected else "#888888"
-
-            # Display number: shift by -1 to show 1-11 instead of 2-12
             display_num = i - 1
 
             if module == DIS_MODULE:
-                # Centre the number over both slots i and i+1
-                cx = L["slot_x0"] + (i - 1 + 1.0) * L["sw"]   # midpoint of pair
+                # DIS occupies raw slots i and i+1 (displayed numbers
+                # i-1 and i respectively). Show the pair's SECOND /
+                # higher displayed number — i.e. "i" — not the first
+                # slot's own number (display_num = i-1).
+                cx = L["slot_x0"] + (i - 1 + 1.0) * L["sw"]
                 c.create_text(cx, L["TOP_Y"] - 14,
-                              text=str(display_num),
+                              text=str(i),
                               font=self._fonts["num"],
                               fill=fill_color,
                               anchor="center")
-                skip_next = True   # hide i+1 header
+                skip_next = True
             else:
                 cx = L["slot_x0"] + (i - 1 + 0.5) * L["sw"]
                 c.create_text(cx, L["TOP_Y"] - 14,
@@ -215,7 +333,7 @@ class RackArea:
                               fill=fill_color,
                               anchor="center")
 
-    # ── Helper: draw one PSM panel ──────────────────────────────────
+    # ── Helper: draw one PSM panel (fallback, hand-drawn) ────────────
 
     def _draw_psm_panel(self, c: tk.Canvas, L: dict,
                         px1: int, py1: int, px2: int, py2: int,
@@ -299,65 +417,31 @@ class RackArea:
     # ── TOP PSM panel — Powersupply.jpg image, stretch-filled ───────
 
     def _draw_psm_top(self, c: tk.Canvas, L: dict):
-        """
-        Column 0 (PSM) top panel. Loads src/images/Powersupply.jpg and
-        stretch-fills it into the panel's exact pixel bounds — the same
-        STRETCH-FILL technique used for VMM-6M / Relay / DIS module cards
-        (img.resize to (panel_w, panel_h), no aspect-ratio letterboxing,
-        no cropping). Falls back to the original hand-drawn PSM panel
-        graphic if the image file can't be found/loaded.
-        Extended height to include middle strip area (45% -> 55%).
-        """
         x1      = L["PAD_X"] + 14
         y1      = L["TOP_Y"] + 2
         x2      = x1 + L["PSM_W"] - 4
-        top_end = L["TOP_Y"] + int(L["SHELL_H"] * 0.50)  # 50% to match bottom
+        top_end = L["TOP_Y"] + int(L["SHELL_H"] * 0.50)
 
         panel_w = max(1, x2 - x1)
         panel_h = max(1, top_end - y1)
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        candidates = [
-            os.path.join(base_dir, 'src', 'images', 'Powersupply.jpg'),
-            os.path.join(base_dir, 'images', 'Powersupply.jpg'),
-            os.path.join(base_dir, 'Powersupply.jpg'),
-            os.path.join(base_dir, 'src', 'Powersupply.jpg'),
-        ]
-        img_path = next((p for p in candidates if os.path.isfile(p)), None)
+        photo = _load_photo(base_dir, "Powersupply.jpg", panel_w, panel_h, label="PSM top")
 
         if not hasattr(self, '_psm_top_photo'):
             self._psm_top_photo = None
 
-        loaded = False
-        if img_path:
-            try:
-                img = Image.open(img_path).convert("RGB")
-
-                # STRETCH-FILL: resize directly to the panel's exact pixel
-                # size, same treatment as VMM-6M / Relay / DIS module cards.
-                img = img.resize((panel_w, panel_h), Image.Resampling.LANCZOS)
-
-                photo = ImageTk.PhotoImage(img)
-                c.create_rectangle(x1, y1, x2, top_end,
-                                   fill="#0a0e14", outline="", tags="rack_bg")
-                c.create_image(x1, y1, image=photo, anchor="nw")
-                self._psm_top_photo = photo   # keep reference alive
-                loaded = True
-            except Exception:
-                pass
-
-        if not loaded:
-            # Fallback: original hand-drawn panel
+        if photo is not None:
+            c.create_rectangle(x1, y1, x2, top_end,
+                               fill="#0a0e14", outline="", tags="rack_bg")
+            c.create_image(x1, y1, image=photo, anchor="nw")
+            self._psm_top_photo = photo
+        else:
             self._draw_psm_panel(c, L, x1, y1, x2, top_end, "VMS-3000 PSM")
 
     # ── MIDDLE strip — Powersupply.jpg image, stretch-filled ─────────────
 
     def _draw_psm_middle(self, c: tk.Canvas, L: dict):
-        """
-        Column 0 (PSM) middle strip. Loads src/images/Powersupply.jpg and
-        stretch-fills it into the strip's exact pixel bounds — the same
-        STRETCH-FILL technique used for the top and bottom PSM panels.
-        """
         x1      = L["PAD_X"] + 14
         x2      = x1 + L["PSM_W"] - 4
         top_end = L["TOP_Y"] + int(L["SHELL_H"] * 0.45)
@@ -369,88 +453,43 @@ class RackArea:
         panel_h = max(1, bot_st - top_end)
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        candidates = [
-            os.path.join(base_dir, 'src', 'images', 'Powersupply.jpg'),
-            os.path.join(base_dir, 'images', 'Powersupply.jpg'),
-            os.path.join(base_dir, 'Powersupply.jpg'),
-            os.path.join(base_dir, 'src', 'Powersupply.jpg'),
-        ]
-        img_path = next((p for p in candidates if os.path.isfile(p)), None)
+        photo = _load_photo(base_dir, "Configuration_Module.jpg", panel_w, panel_h, label="PSM middle")
 
         if not hasattr(self, '_psm_middle_photo'):
             self._psm_middle_photo = None
 
-        loaded = False
-        if img_path:
-            try:
-                img = Image.open(img_path).convert("RGB")
-
-                # STRETCH-FILL: resize directly to the strip's exact pixel
-                # size, same treatment as top and bottom PSM panels.
-                img = img.resize((panel_w, panel_h), Image.Resampling.LANCZOS)
-
-                photo = ImageTk.PhotoImage(img)
-                c.create_rectangle(x1, top_end + 2, x2, bot_st - 2,
-                                   fill="#0a0e14", outline="", tags="rack_bg")
-                c.create_image(x1, top_end + 2, image=photo, anchor="nw")
-                self._psm_middle_photo = photo   # keep reference alive
-                loaded = True
-            except Exception:
-                pass
-
-        if not loaded:
-            # Fallback: dark background
+        if photo is not None:
+            c.create_rectangle(x1, top_end + 2, x2, bot_st - 2,
+                               fill="#0a0e14", outline="", tags="rack_bg")
+            c.create_image(x1, top_end + 2, image=photo, anchor="nw")
+            self._psm_middle_photo = photo
+        else:
             c.create_rectangle(x1, top_end + 2, x2, bot_st - 2,
                                fill="#0d1a28", outline="", tags="rack_bg")
 
     # ── BOTTOM PSM / CPU panel — Powersupply.jpg image, stretch-filled ───────
 
     def _draw_psm_bottom(self, c: tk.Canvas, L: dict):
-        """
-        Column 0 (PSM) bottom panel. Loads src/images/Powersupply.jpg and
-        stretch-fills it into the panel's exact pixel bounds — the same
-        STRETCH-FILL technique used for the top PSM panel and module cards.
-        """
         x1    = L["PAD_X"] + 14
         x2    = x1 + L["PSM_W"] - 4
-        bot_st = L["TOP_Y"] + int(L["SHELL_H"] * 0.50)  # 50% to match top
+        bot_st = L["TOP_Y"] + int(L["SHELL_H"] * 0.50)
         y2     = L["TOP_Y"] + L["SHELL_H"] - 12
 
         panel_w = max(1, x2 - x1)
         panel_h = max(1, y2 - bot_st)
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        candidates = [
-            os.path.join(base_dir, 'src', 'images', 'Powersupply.jpg'),
-            os.path.join(base_dir, 'images', 'Powersupply.jpg'),
-            os.path.join(base_dir, 'Powersupply.jpg'),
-            os.path.join(base_dir, 'src', 'Powersupply.jpg'),
-        ]
-        img_path = next((p for p in candidates if os.path.isfile(p)), None)
+        photo = _load_photo(base_dir, "Powersupply.jpg", panel_w, panel_h, label="PSM bottom")
 
         if not hasattr(self, '_psm_bottom_photo'):
             self._psm_bottom_photo = None
 
-        loaded = False
-        if img_path:
-            try:
-                img = Image.open(img_path).convert("RGB")
-
-                # STRETCH-FILL: resize directly to the panel's exact pixel
-                # size, same treatment as top PSM panel and module cards.
-                img = img.resize((panel_w, panel_h), Image.Resampling.LANCZOS)
-
-                photo = ImageTk.PhotoImage(img)
-                c.create_rectangle(x1, bot_st, x2, y2,
-                                   fill="#0a0e14", outline="", tags="rack_bg")
-                c.create_image(x1, bot_st, image=photo, anchor="nw")
-                self._psm_bottom_photo = photo   # keep reference alive
-                loaded = True
-            except Exception:
-                pass
-
-        if not loaded:
-            # Fallback: original hand-drawn panel
+        if photo is not None:
+            c.create_rectangle(x1, bot_st, x2, y2,
+                               fill="#0a0e14", outline="", tags="rack_bg")
+            c.create_image(x1, bot_st, image=photo, anchor="nw")
+            self._psm_bottom_photo = photo
+        else:
             content_y = self._draw_psm_panel(c, L, x1, bot_st, x2, y2, "VMS-3000 CPU")
 
             box_x1 = x1 + 6
@@ -480,6 +519,7 @@ class RackArea:
                               anchor="w")
 
             run_y = box_y2 + 6
+            mx = (box_x1 + box_x2) // 2
             c.create_oval(mx-10, run_y, mx+10, run_y+12,
                           fill="#183018", outline="#1e3050", width=2)
             c.create_oval(mx-6,  run_y+2, mx+6,  run_y+10,
@@ -531,27 +571,12 @@ class RackArea:
     # ══════════════════════════════════════════════════════════════════
 
     def _draw_dis_module(self, c: tk.Canvas, L: dict, slot_idx: int):
-        """
-        Render a 3000/12M/DIS module that spans TWO slot columns.
-        slot_idx  = the LEFT (primary) slot (0-based).
-        slot_idx+1 = the hidden right slot.
-
-        Behaviour:
-          • The merged card occupies exactly 2× the normal slot width.
-          • The Measurement_Module.jpg is loaded and scaled in COVER mode
-            (fills the full card width and height, center-cropping any
-            overflow) so there are no black margins on the sides.
-          • Slot number label above shows only the primary slot number.
-          • Clicking the card opens the same module-assignment dialog so the
-            user can change or remove the module.
-        """
         slot_num = slot_idx + 1
         key      = f"0_{slot_num}"
         tag      = f"s_{key}"
         is_sel   = (self._selected == key)
 
         sw   = L["sw"]
-        # Double-wide: spans slot_idx and slot_idx+1
         sx1  = int(L["slot_x0"] + slot_idx * sw + 3)
         sx2  = int(L["slot_x0"] + (slot_idx + 2) * sw - 6)
         sy1  = L["TOP_Y"] + 2
@@ -560,58 +585,21 @@ class RackArea:
         card_w = max(1, sx2 - sx1)
         card_h = max(1, sy2 - sy1)
 
-        # ── Locate Measurement_Module.jpg ────────────────────────────
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        candidates = [
-            os.path.join(base_dir, 'src', 'images', 'Measurement_Module.jpg'),
-            os.path.join(base_dir, 'images', 'Measurement_Module.jpg'),
-            os.path.join(base_dir, 'Measurement_Module.jpg'),
-            os.path.join(base_dir, 'src', 'Measurement_Module.jpg'),
-            # Also accept the uploaded filename variant
-            os.path.join(base_dir, 'src', 'images', '1782708952514_Measurement_Module.jpg'),
-            os.path.join(base_dir, 'images', '1782708952514_Measurement_Module.jpg'),
-            os.path.join(base_dir, '1782708952514_Measurement_Module.jpg'),
-        ]
 
         if not hasattr(self, '_module_images'):
             self._module_images = {}
 
-        img_path = None
-        for p in candidates:
-            if os.path.isfile(p):
-                img_path = p
-                break
+        photo = _load_photo(base_dir, "Measurement_Module.jpg", card_w, card_h,
+                             label=f"DIS module slot {slot_num}")
 
-        loaded = False
-        if img_path:
-            try:
-                img    = Image.open(img_path).convert("RGB")
-
-                # STRETCH-FILL: resize directly to the card's exact pixel
-                # size. The whole image stays fully visible (no cropping)
-                # and there are no black margins (no letterboxing) — the
-                # image is stretched/squashed non-uniformly to match the
-                # card's aspect ratio exactly.
-                img = img.resize((card_w, card_h), Image.Resampling.LANCZOS)
-
-                ox = sx1
-                oy = sy1
-
-                photo = ImageTk.PhotoImage(img)
-                # Dark background (only visible if image somehow doesn't
-                # fully cover due to rounding — kept as a safety net).
-                # No outline here — the border-less look is intentional.
-                c.create_rectangle(sx1, sy1, sx2, sy2,
-                                   fill="#0a0e14", outline="",
-                                   width=0, tags=tag)
-                c.create_image(ox, oy, image=photo, anchor="nw", tags=tag)
-                self._module_images[key] = photo
-                loaded = True
-            except Exception:
-                pass
-
-        if not loaded:
-            # Fallback
+        if photo is not None:
+            c.create_rectangle(sx1, sy1, sx2, sy2,
+                               fill="#0a0e14", outline="",
+                               width=0, tags=tag)
+            c.create_image(sx1, sy1, image=photo, anchor="nw", tags=tag)
+            self._module_images[key] = photo
+        else:
             c.create_rectangle(sx1, sy1, sx2, sy2,
                                fill="#1a4fa0", outline="",
                                width=0, tags=tag)
@@ -628,19 +616,19 @@ class RackArea:
                           font=tkfont.Font(family="Segoe UI", size=7),
                           anchor="center", tags=tag)
 
-        # ── Selection border only (amber) — no blue border in any state ──
         if is_sel:
             c.create_rectangle(sx1, sy1, sx2, sy2,
                                fill="", outline="#f0b040",
                                width=3, tags=tag)
 
-        # ── Mouse bindings ────────────────────────────────────────────
         c.tag_bind(tag, "<Enter>",
                    lambda e, t=tag, k=key: self._hover(t, k, True))
         c.tag_bind(tag, "<Leave>",
                    lambda e, t=tag, k=key: self._hover(t, k, False))
         c.tag_bind(tag, "<Button-1>",
-                   lambda e, k=key, s=slot_num: self._click(k, s))
+                   lambda e, k=key, s=slot_num: self._click(k, s, e))
+        c.tag_bind(tag, "<Button-3>",
+                   lambda e, k=key, s=slot_num: self._right_click(k, s, e))
 
     # ── Slot card ────────────────────────────────────────────────────
 
@@ -651,14 +639,16 @@ class RackArea:
         is_sel   = (self._selected == key)
         module   = self._slot_data.get(key)
 
-        # VMM-6M single-slot image card
-        if module and is_image_display_module(module):
-            self._draw_detailed_module(c, L, slot_idx, module, is_sel, tag)
-            return
-
-        # Relay single-slot image card
         if _is_relay_module(module):
             self._draw_relay_module(c, L, slot_idx, module, is_sel, tag)
+            return
+
+        if _is_6m_module(module):
+            self._draw_6m_module(c, L, slot_idx, module, is_sel, tag)
+            return
+
+        if module and is_image_display_module(module):
+            self._draw_detailed_module(c, L, slot_idx, module, is_sel, tag)
             return
 
         sw  = L["sw"]
@@ -666,62 +656,87 @@ class RackArea:
         sx2 = sx1 + sw - 6
         sy1 = L["TOP_Y"] + 2
         sy2 = L["TOP_Y"] + L["SHELL_H"] - 12
+        slot_w = max(1, sx2 - sx1)
+        slot_h = max(1, sy2 - sy1)
         mx  = (sx1 + sx2) // 2
-        card_h = sy2 - sy1
 
-        # Always show default appearance - removed disabled gray state
-        if is_sel:
-            face_col = T["slot_sel_face"]
-            edge_col = T["slot_sel"]
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        if not hasattr(self, '_no_module_images'):
+            self._no_module_images = {}
+
+        # Slot 1 is the fixed Configuration/status panel (RUN dial, DB9 port,
+        # DIP switches, LEDs) — it never shows the generic empty-slot
+        # placeholder, it always shows Configuration_Module.jpg, matching
+        # the physical rack.
+        if slot_num == 1:
+            photo = _load_photo(base_dir, "Configuration_Module.jpg", slot_w, slot_h,
+                                 label=f"configuration panel slot {slot_num}")
         else:
-            face_col = T["slot_face"]
-            edge_col = T["slot_edge_sh"]
+            photo = _load_photo(base_dir, "NO_Module.jpg", slot_w, slot_h,
+                                 label=f"empty slot {slot_num}")
 
-        # Outer card body
-        c.create_rectangle(sx1, sy1, sx2, sy2,
-                            fill=face_col,
-                            outline=edge_col,
-                            width=2,
-                            tags=tag)
+        if photo is not None:
+            # Draw image directly without black background
+            c.create_image(sx1, sy1, image=photo, anchor="nw", tags=tag)
+            # Store reference to prevent garbage collection
+            self._no_module_images[key] = photo
+        else:
+            # Fallback to original blue rectangle if image fails to load
+            if is_sel:
+                face_col = T["slot_sel_face"]
+                edge_col = T["slot_sel"]
+            else:
+                face_col = T["slot_face"]
+                edge_col = T["slot_edge_sh"]
 
-        # Small ejector-handle cap at the top, centred
-        cap_w = 22
-        cap_h = 8
-        c.create_rectangle(mx - cap_w // 2, sy1 + 8,
-                            mx + cap_w // 2, sy1 + 8 + cap_h,
-                            fill=T["slot_cap"] if not is_sel else "#fde68a",
-                            outline=edge_col,
-                            width=1, tags=tag)
+            c.create_rectangle(sx1, sy1, sx2, sy2,
+                                fill=face_col,
+                                outline=edge_col,
+                                width=2,
+                                tags=tag)
 
-        # Plain bordered inner panel (no grip texture, no LED, no pins)
-        panel_y1 = sy1 + 8 + cap_h + 8
-        panel_y2 = sy2 - 10
-        c.create_rectangle(sx1 + 6, panel_y1, sx2 - 6, panel_y2,
-                            fill=face_col,
-                            outline=edge_col,
-                            width=1, tags=tag)
+            cap_w = 22
+            cap_h = 8
+            c.create_rectangle(mx - cap_w // 2, sy1 + 8,
+                                mx + cap_w // 2, sy1 + 8 + cap_h,
+                                fill=T["slot_cap"] if not is_sel else "#fde68a",
+                                outline=edge_col,
+                                width=1, tags=tag)
 
-        if module:
-            short = module.split()[0]
-            c.create_text(mx, (panel_y1 + panel_y2) // 2,
-                          text=short,
-                          font=tkfont.Font(family="Courier New", size=7, weight="bold"),
-                          fill=T["slot_mod_fg"],
-                          anchor="center",
-                          tags=tag)
+            panel_y1 = sy1 + 8 + cap_h + 8
+            panel_y2 = sy2 - 10
+            c.create_rectangle(sx1 + 6, panel_y1, sx2 - 6, panel_y2,
+                                fill=face_col,
+                                outline=edge_col,
+                                width=1, tags=tag)
 
-        # Bottom thin bar
-        c.create_rectangle(sx1 + 4, sy2 - 6, sx2 - 4, sy2 - 2,
-                            fill="#0a1520",
-                            outline="",
-                            tags=tag)
+            if module:
+                short = module.split()[0]
+                c.create_text(mx, (panel_y1 + panel_y2) // 2,
+                              text=short,
+                              font=tkfont.Font(family="Courier New", size=7, weight="bold"),
+                              fill=T["slot_mod_fg"],
+                              anchor="center",
+                              tags=tag)
+
+            c.create_rectangle(sx1 + 4, sy2 - 6, sx2 - 4, sy2 - 2,
+                                fill="#0a1520",
+                                outline="",
+                                tags=tag)
+
+        # Draw selection outline if selected
+        if is_sel:
+            c.create_rectangle(sx1, sy1, sx2, sy2,
+                               fill="", outline="#f0b040",
+                               width=3, tags=tag)
 
         c.tag_bind(tag, "<Enter>",
                    lambda e, t=tag, k=key: self._hover(t, k, True))
         c.tag_bind(tag, "<Leave>",
                    lambda e, t=tag, k=key: self._hover(t, k, False))
         c.tag_bind(tag, "<Button-1>",
-                   lambda e, k=key, s=slot_num: self._click(k, s))
+                   lambda e, k=key, s=slot_num: self._click(k, s, e))
 
     # ══════════════════════════════════════════════════════════════════
     #  VMM-6M detailed module — single-slot image card
@@ -729,13 +744,6 @@ class RackArea:
 
     def _draw_detailed_module(self, c: tk.Canvas, L: dict, slot_idx: int,
                               module: str, is_sel: bool, tag: str):
-        """Single-slot VMM-6M image card.
-
-        Uses COVER scaling: the image is scaled so it fully fills the
-        card's width AND height, with any dimension overflow center-cropped
-        away. This guarantees the rendered module image always spans the
-        full card width — no black margins on the left/right.
-        """
         slot_num = slot_idx + 1
         key      = f"0_{slot_num}"
 
@@ -748,42 +756,20 @@ class RackArea:
         slot_h = max(1, sy2 - sy1)
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        candidates = [
-            os.path.join(base_dir, 'src', 'images', 'VMM-6M.jpg'),
-            os.path.join(base_dir, 'images', 'VMM-6M.jpg'),
-            os.path.join(base_dir, 'VMM-6M.jpg'),
-            os.path.join(base_dir, 'src', 'VMM-6M.jpg'),
-        ]
-        img_path = next((p for p in candidates if os.path.isfile(p)), None)
 
         if not hasattr(self, '_module_images'):
             self._module_images = {}
 
-        loaded = False
-        if img_path:
-            try:
-                img    = Image.open(img_path).convert("RGB")
+        photo = _load_photo(base_dir, "VMM-6M.jpg", slot_w, slot_h,
+                             label=f"VMM-6M slot {slot_num}")
 
-                # STRETCH-FILL: resize directly to the card's exact pixel
-                # size. The whole image stays fully visible (no cropping)
-                # and there are no black margins (no letterboxing).
-                img = img.resize((slot_w, slot_h), Image.Resampling.LANCZOS)
-
-                ox = sx1
-                oy = sy1
-
-                photo = ImageTk.PhotoImage(img)
-                # No outline — border-less card in all states.
-                c.create_rectangle(sx1, sy1, sx2, sy2,
-                                   fill="#0a0e14", outline="",
-                                   width=0, tags=tag)
-                c.create_image(ox, oy, image=photo, anchor="nw", tags=tag)
-                self._module_images[key] = photo
-                loaded = True
-            except Exception:
-                pass
-
-        if not loaded:
+        if photo is not None:
+            c.create_rectangle(sx1, sy1, sx2, sy2,
+                               fill="#0a0e14", outline="",
+                               width=0, tags=tag)
+            c.create_image(sx1, sy1, image=photo, anchor="nw", tags=tag)
+            self._module_images[key] = photo
+        else:
             c.create_rectangle(sx1, sy1, sx2, sy2,
                                fill="#1a4fa0", outline="",
                                width=0, tags=tag)
@@ -793,7 +779,6 @@ class RackArea:
                           font=tkfont.Font(family="Segoe UI", size=8, weight="bold"),
                           anchor="center", tags=tag)
 
-        # Selection border only (amber) — no blue border in any state
         if is_sel:
             c.create_rectangle(sx1, sy1, sx2, sy2,
                                fill="", outline="#f0b040",
@@ -804,7 +789,7 @@ class RackArea:
         c.tag_bind(tag, "<Leave>",
                    lambda e, t=tag, k=key: self._hover(t, k, False))
         c.tag_bind(tag, "<Button-1>",
-                   lambda e, k=key, s=slot_num: self._click(k, s))
+                   lambda e, k=key, s=slot_num: self._click(k, s, e))
 
     # ══════════════════════════════════════════════════════════════════
     #  3000/RLY — single-slot Relay module image card
@@ -812,8 +797,6 @@ class RackArea:
 
     def _draw_relay_module(self, c: tk.Canvas, L: dict, slot_idx: int,
                             module: str, is_sel: bool, tag: str):
-        """Single-slot Relay (3000/RLY) image card — same stretch-fill
-        behaviour as the VMM-6M card, just a different source image."""
         slot_num = slot_idx + 1
         key      = f"0_{slot_num}"
 
@@ -826,41 +809,20 @@ class RackArea:
         slot_h = max(1, sy2 - sy1)
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        candidates = [
-            os.path.join(base_dir, 'src', 'images', 'Relay_Module.jpg'),
-            os.path.join(base_dir, 'images', 'Relay_Module.jpg'),
-            os.path.join(base_dir, 'Relay_Module.jpg'),
-            os.path.join(base_dir, 'src', 'Relay_Module.jpg'),
-        ]
-        img_path = next((p for p in candidates if os.path.isfile(p)), None)
 
         if not hasattr(self, '_module_images'):
             self._module_images = {}
 
-        loaded = False
-        if img_path:
-            try:
-                img = Image.open(img_path).convert("RGB")
+        photo = _load_photo(base_dir, "Relay_Module.jpg", slot_w, slot_h,
+                             label=f"Relay slot {slot_num}")
 
-                # STRETCH-FILL: resize directly to the card's exact pixel
-                # size, matching the same treatment as VMM-6M / DIS cards.
-                img = img.resize((slot_w, slot_h), Image.Resampling.LANCZOS)
-
-                ox = sx1
-                oy = sy1
-
-                photo = ImageTk.PhotoImage(img)
-                # No outline — border-less card in all states.
-                c.create_rectangle(sx1, sy1, sx2, sy2,
-                                   fill="#0a0e14", outline="",
-                                   width=0, tags=tag)
-                c.create_image(ox, oy, image=photo, anchor="nw", tags=tag)
-                self._module_images[key] = photo
-                loaded = True
-            except Exception:
-                pass
-
-        if not loaded:
+        if photo is not None:
+            c.create_rectangle(sx1, sy1, sx2, sy2,
+                               fill="#0a0e14", outline="",
+                               width=0, tags=tag)
+            c.create_image(sx1, sy1, image=photo, anchor="nw", tags=tag)
+            self._module_images[key] = photo
+        else:
             c.create_rectangle(sx1, sy1, sx2, sy2,
                                fill="#1a4fa0", outline="",
                                width=0, tags=tag)
@@ -870,7 +832,6 @@ class RackArea:
                           font=tkfont.Font(family="Segoe UI", size=8, weight="bold"),
                           anchor="center", tags=tag)
 
-        # Selection border only (amber) — no blue border in any state
         if is_sel:
             c.create_rectangle(sx1, sy1, sx2, sy2,
                                fill="", outline="#f0b040",
@@ -881,7 +842,64 @@ class RackArea:
         c.tag_bind(tag, "<Leave>",
                    lambda e, t=tag, k=key: self._hover(t, k, False))
         c.tag_bind(tag, "<Button-1>",
-                   lambda e, k=key, s=slot_num: self._click(k, s))
+                   lambda e, k=key, s=slot_num: self._click(k, s, e))
+        c.tag_bind(tag, "<Button-3>",
+                   lambda e, k=key, s=slot_num: self._right_click(k, s, e))
+
+    # ══════════════════════════════════════════════════════════════════
+    #  3000/6M — single-slot 6M module image card
+    # ══════════════════════════════════════════════════════════════════
+
+    def _draw_6m_module(self, c: tk.Canvas, L: dict, slot_idx: int,
+                       module: str, is_sel: bool, tag: str):
+        slot_num = slot_idx + 1
+        key      = f"0_{slot_num}"
+
+        sw     = L["sw"]
+        sx1    = int(L["slot_x0"] + slot_idx * sw + 3)
+        sx2    = int(sx1 + sw - 6)
+        sy1    = L["TOP_Y"] + 2
+        sy2    = L["TOP_Y"] + L["SHELL_H"] - 12
+        slot_w = max(1, sx2 - sx1)
+        slot_h = max(1, sy2 - sy1)
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        if not hasattr(self, '_6m_images'):
+            self._6m_images = {}
+
+        photo = _load_photo(base_dir, "VMM-6M.jpg", slot_w, slot_h,
+                             label=f"6M slot {slot_num}")
+
+        if photo is not None:
+            c.create_rectangle(sx1, sy1, sx2, sy2,
+                               fill="#0a0e14", outline="",
+                               width=0, tags=tag)
+            c.create_image(sx1, sy1, image=photo, anchor="nw", tags=tag)
+            self._6m_images[key] = photo
+        else:
+            c.create_rectangle(sx1, sy1, sx2, sy2,
+                               fill="#5a8a5a", outline="",
+                               width=0, tags=tag)
+            c.create_text((sx1 + sx2) // 2, (sy1 + sy2) // 2,
+                          text="3000/6M",
+                          fill="#ffffff",
+                          font=tkfont.Font(family="Segoe UI", size=8, weight="bold"),
+                          anchor="center", tags=tag)
+
+        if is_sel:
+            c.create_rectangle(sx1, sy1, sx2, sy2,
+                               fill="", outline="#f0b040",
+                               width=3, tags=tag)
+
+        c.tag_bind(tag, "<Enter>",
+                   lambda e, t=tag, k=key: self._hover(t, k, True))
+        c.tag_bind(tag, "<Leave>",
+                   lambda e, t=tag, k=key: self._hover(t, k, False))
+        c.tag_bind(tag, "<Button-1>",
+                   lambda e, k=key, s=slot_num: self._click(k, s, e))
+        c.tag_bind(tag, "<Button-3>",
+                   lambda e, k=key, s=slot_num: self._right_click(k, s, e))
 
     # ── Interaction ─────────────────────────────────────────────────
 
@@ -890,7 +908,6 @@ class RackArea:
             return
         slot_n   = key.split("_")[1]
         assigned = self._slot_data.get(key)
-        # Removed color change logic - rack maintains default appearance
         if entering:
             self._hint_var.set(
                 f"Slot {slot_n}  —  "
@@ -899,7 +916,7 @@ class RackArea:
         else:
             self._hint_var.set("Click any slot to assign module")
 
-    def _click(self, key: str, slot_num: int):
+    def _click(self, key: str, slot_num: int, event=None):
         self._selected = key
         self.draw()
         self._hint_var.set(f"Slot {slot_num} selected")
@@ -907,7 +924,86 @@ class RackArea:
         if slot_num == 1:
             self._config_settings_dialog()
         else:
-            self._module_dialog(key, slot_num)
+            self._module_dialog(key, slot_num, event)
+
+    def _right_click(self, key: str, slot_num: int, event):
+        """Handle right-click on DIS_MODULE and RELAY_MODULE to show context menu."""
+        module = self._slot_data.get(key)
+
+        # Show context menu for DIS_MODULE with Options, Setpoints, Point Names
+        if module == DIS_MODULE:
+            def on_options(slot):
+                dialog = ProximityMonitor3000ConfigDialog(self._canvas, slot)
+                dialog.show()
+
+            def on_setpoints(slot):
+                dialog = SetpointsDialog(self._canvas, self._fonts, slot)
+                dialog.show()
+
+            def on_point_names(slot):
+                # TODO: Implement Point Names dialog
+                print(f"Point Names for slot {slot}")
+
+            context_menu = PointOptionsContextMenu(
+                self._canvas,
+                self._fonts,
+                slot_num,
+                on_options=on_options,
+                on_setpoints=on_setpoints,
+                on_point_names=on_point_names
+            )
+
+            # Get screen coordinates for the menu
+            x = event.x_root
+            y = event.y_root
+            context_menu.show(x, y)
+
+        # Show context menu for RELAY_MODULE with only Setpoints
+        elif _is_relay_module(module):
+            def on_setpoints(slot):
+                dialog = RelayConfigDialog(self._canvas, slot, module, "A1", rack_config=self._slot_data)
+                dialog.show()
+
+            context_menu = PointOptionsContextMenu(
+                self._canvas,
+                self._fonts,
+                slot_num,
+                on_setpoints=on_setpoints
+            )
+
+            # Get screen coordinates for the menu
+            x = event.x_root
+            y = event.y_root
+            context_menu.show(x, y)
+
+        # Show context menu for 3000/6M with Options, Setpoints, Point Names
+        elif _is_6m_module(module):
+            def on_options(slot):
+                dialog = SixMOptionsDialog(self._canvas, slot)
+                dialog.show()
+
+            def on_setpoints(slot):
+                # Reuse the exact same Setpoints dialog design as 3000/12M/DIS
+                dialog = SetpointsDialog(self._canvas, self._fonts, slot)
+                dialog.show()
+
+            def on_point_names(slot):
+                # TODO: Implement 3000/6M Point Names dialog
+                print(f"Point Names for 3000/6M slot {slot}")
+
+            context_menu = PointOptionsContextMenu(
+                self._canvas,
+                self._fonts,
+                slot_num,
+                on_options=on_options,
+                on_setpoints=on_setpoints,
+                on_point_names=on_point_names
+            )
+
+            # Get screen coordinates for the menu
+            x = event.x_root
+            y = event.y_root
+            context_menu.show(x, y)
 
     # ── Configuration Settings dialog (for slot 1) ──────────────────
 
@@ -918,14 +1014,87 @@ class RackArea:
         self.draw()
         self._hint_var.set("Configuration Settings closed")
 
-    # ── Module assignment dialog ─────────────────────────────────────
+    # ── Module assignment — cascading flyout menu ────────────────────
 
-    def _module_dialog(self, key: str, slot_num: int):
+    # Raw slots where a DIS module may start. DIS occupies (slot_num,
+    # slot_num+1) — a sliding window, NOT fixed non-overlapping pairs.
+    # Any raw slot from 2 up to SLOT_COUNT-1 is a valid start: raw slot 1
+    # is reserved for Configuration Settings. Raw slot SLOT_COUNT (the
+    # last physical slot, displayed as "11") CAN become the tail of a DIS
+    # pair — e.g. displayed slot 10 (raw 11) pairing with displayed slot
+    # 11 (raw 12) is valid and shows 3000/12M/DIS across both. The
+    # "6M/Relay only" restriction below only applies when the last slot
+    # is selected directly on its own, not when it's filled as the tail
+    # of a DIS pair started from the slot before it.
+    _DIS_ALLOWED_START_SLOTS = tuple(range(2, SLOT_COUNT))
+    # Raw slot 12 (displayed as "11") is the last physical slot. If it is
+    # selected directly (not as the tail of a DIS pair from raw slot 11),
+    # only 3000/6M or Relay are permitted there.
+    _LAST_SLOT_RESTRICTED = 12
+
+    @staticmethod
+    def _is_vmm_or_relay(selection: str) -> bool:
+        if not selection:
+            return False
+        if selection == "No Modules":
+            return True
+        if selection == VMM_MODULE or selection == "3000/6M":
+            return True
+        return _is_relay_module(selection)
+
+    def _module_dialog(self, key: str, slot_num: int, event=None):
         def on_selection(selection):
             current_module = self._slot_data.get(key)
-            
-            # If there's already a module and user is switching to a different module
-            # (not "No Modules"), show confirmation popup
+
+            # ── Rule: last slot (raw 12 / displayed 11) is restricted ──
+            if slot_num == self._LAST_SLOT_RESTRICTED and not self._is_vmm_or_relay(selection):
+                from tkinter import messagebox
+                messagebox.showwarning(
+                    "Module Selection",
+                    "This slot only allows 3000/6M or Relay modules.",
+                    parent=self._canvas
+                )
+                return
+
+            # ── Rule: even slot that's the tail of a DIS pair ──
+            prev_slot_key = f"0_{slot_num - 1}"
+            prev_module = self._slot_data.get(prev_slot_key)
+            if prev_module == DIS_MODULE and selection != "No Modules":
+                from tkinter import messagebox
+                messagebox.showwarning(
+                    "Module Selection",
+                    f"This slot is occupied by 3000/12M/DIS from the previous slot.\n"
+                    "Please select a different slot.",
+                    parent=self._canvas
+                )
+                return
+
+            # ── Rule: DIS placement — only allowed start slots, and its
+            #    partner slot must be free and not the restricted last slot ──
+            if selection == DIS_MODULE:
+                if slot_num not in self._DIS_ALLOWED_START_SLOTS:
+                    from tkinter import messagebox
+                    messagebox.showwarning(
+                        "Module Selection",
+                        "3000/12M/DIS cannot be placed starting at this slot.",
+                        parent=self._canvas
+                    )
+                    return
+
+                partner_num = slot_num + 1
+                partner_key = f"0_{partner_num}"
+                partner_module = self._slot_data.get(partner_key)
+                # Allow DIS if partner slot is empty (None) or "No Modules"
+                if partner_module is not None and partner_module != "No Modules":
+                    from tkinter import messagebox
+                    messagebox.showwarning(
+                        "Module Selection",
+                        "The next slot is already occupied.\n"
+                        "3000/12M/DIS needs this slot and the next one to be free.",
+                        parent=self._canvas
+                    )
+                    return
+
             if current_module and selection != "No Modules" and current_module != selection:
                 def on_switch_confirmed(confirmed):
                     if confirmed:
@@ -938,23 +1107,33 @@ class RackArea:
                         self._hint_var.set(
                             f"Slot {slot_num} → {self._slot_data.get(key, 'Empty')}"
                         )
-                
+
                 popup = ModuleSwitchConfirmationPopup(
                     self._canvas, self._fonts, current_module, selection, on_switch_confirmed
                 )
                 popup.show()
                 return
-            
+
             if selection == "No Modules":
                 self._slot_data.pop(key, None)
             else:
                 self._slot_data[key] = selection
-            # Keep selection to show enabled color after module assignment
             self._selected = key
             self.draw()
             self._hint_var.set(
                 f"Slot {slot_num} → {self._slot_data.get(key, 'Empty')}"
             )
 
-        popup = ModuleSelectionPopup(self._canvas, self._fonts, slot_num, on_selection)
-        popup.show()
+        # Cascading flyout menu (Monitors ▸ Proximeter/Tachometer ▸ Model,
+        # Gateways, Relay ▸ Model, No Modules) — replaces the old card-style
+        # ModuleSelectionPopup dialog.
+        menu = CascadingMenu(self._canvas, self._fonts, on_selection)
+
+        if event is not None:
+            x, y = event.x_root, event.y_root
+        else:
+            # Fallback: anchor near the canvas if no click event is available
+            x = self._canvas.winfo_rootx() + 40
+            y = self._canvas.winfo_rooty() + 40
+
+        menu.show_menu(x, y)

@@ -57,17 +57,78 @@ def build_menubar(root, fonts, commands: dict):
                 )
         mb.add_cascade(label=f"  {label}  ", menu=m)
 
+    # ── helper for submenu ───────────────────────────────────────────
+    def _submenu(parent, label, items):
+        m = tk.Menu(
+            parent,
+            tearoff=0,
+            bg=T["menu_drop_bg"],
+            fg=T["menu_fg"],
+            activebackground=T["menu_active_bg"],
+            activeforeground=T["menu_active_fg"],
+            selectcolor=T["menu_active_bg"],
+            font=fonts["menu"],
+            relief="flat",
+            bd=1,
+        )
+        for item in items:
+            if item is None:
+                m.add_separator()
+            else:
+                lbl, cmd, *rest = item
+                state    = rest[0] if rest else tk.NORMAL
+                accel    = rest[1] if len(rest) > 1 else ""
+                m.add_command(
+                    label=f"  {lbl}",
+                    accelerator=accel,
+                    command=cmd or (lambda: None),
+                    state=state,
+                )
+        parent.add_cascade(label=f"  {label}  ", menu=m)
+
     # ── File ────────────────────────────────────────────────────────
-    _drop("File", [
-        ("New",            commands.get("new"),      tk.NORMAL, "Ctrl+N"),
-        ("Open…",          commands.get("open"),     tk.NORMAL, "Ctrl+O"),
-        ("Save",           commands.get("save"),     tk.NORMAL, "Ctrl+S"),
-        ("Save As…",       commands.get("save_as"),  tk.NORMAL, "Ctrl+Shift+S"),
-        None,
-        ("Print…",         None,                    tk.NORMAL, "Ctrl+P"),
-        None,
-        ("Exit",           root.destroy,            tk.NORMAL, "Alt+F4"),
-    ])
+    file_menu = tk.Menu(
+        mb,
+        tearoff=0,
+        bg=T["menu_drop_bg"],
+        fg=T["menu_fg"],
+        activebackground=T["menu_active_bg"],
+        activeforeground=T["menu_active_fg"],
+        selectcolor=T["menu_active_bg"],
+        font=fonts["menu"],
+        relief="flat",
+        bd=1,
+    )
+    
+    file_menu.add_command(label="  New",            accelerator="Ctrl+N", command=commands.get("new") or (lambda: None))
+    file_menu.add_command(label="  Open…",          accelerator="Ctrl+O", command=commands.get("open") or (lambda: None))
+    file_menu.add_command(label="  Save",           accelerator="Ctrl+S", command=commands.get("save") or (lambda: None))
+    file_menu.add_command(label="  Save As…",       accelerator="Ctrl+Shift+S", command=commands.get("save_as") or (lambda: None))
+    
+    # Connection submenu
+    connection_menu = tk.Menu(
+        file_menu,
+        tearoff=0,
+        bg=T["menu_drop_bg"],
+        fg=T["menu_fg"],
+        activebackground=T["menu_active_bg"],
+        activeforeground=T["menu_active_fg"],
+        selectcolor=T["menu_active_bg"],
+        font=fonts["menu"],
+        relief="flat",
+        bd=1,
+    )
+    connection_menu.add_command(label="  Direct Connect",   command=commands.get("direct_connect") or (lambda: None))
+    connection_menu.add_command(label="  Network Connect",  command=commands.get("network_connect") or (lambda: None))
+    connection_menu.add_command(label="  Disconnect",       command=commands.get("disconnect") or (lambda: None))
+    file_menu.add_cascade(label="  Connection  ", menu=connection_menu)
+    
+    file_menu.add_separator()
+    file_menu.add_command(label="  Print…",         accelerator="Ctrl+P", command=None)
+    file_menu.add_separator()
+    file_menu.add_command(label="  Exit",           accelerator="Alt+F4", command=root.destroy)
+    
+    mb.add_cascade(label="  File  ", menu=file_menu)
 
     # ── Edit ────────────────────────────────────────────────────────
     _drop("Edit", [

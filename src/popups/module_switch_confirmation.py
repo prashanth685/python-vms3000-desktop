@@ -13,22 +13,22 @@ import tkinter.font as tkfont
 
 T = {
     # ── Window & chrome ──────────────────────────────────────────────
-    "win_bg":           "#f5f7fa",
-    "titlebar":         "#1a3a5c",
+    "win_bg":           "#eef1f4",
+    "titlebar":         "#1d5fa8",
 
     # ── Buttons ───────────────────────────────────────────────────────
-    "btn_face":         "#e4e9f0",
-    "btn_hover":        "#d0e4f8",
-    "btn_border":       "#b4bfcc",
+    "btn_face":         "#e7e9ec",
+    "btn_hover":        "#f2f4f6",
+    "btn_border":       "#5a5a5a",
 
     # ── Text ──────────────────────────────────────────────────────────
-    "text":             "#1a2533",
+    "text":             "#1a1a1a",
     "text_white":       "#ffffff",
-    "text_dim":         "#6b7280",
+    "text_dim":         "#9a9a9a",
 
     # ── Accent ────────────────────────────────────────────────────────
-    "accent":           "#1a4fa0",
-    "accent_light":     "#3a6fcc",
+    "accent":           "#1d5fa8",
+    "accent_light":     "#2f7dc4",
     "accent_teal":      "#0891b2",
 }
 

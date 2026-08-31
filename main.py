@@ -10,10 +10,13 @@ import datetime
 from theme     import T
 from menubar   import build_menubar
 from toolbar   import build_toolbar
-from sidebar   import build_sidebar
 from rack_area import RackArea
 from tooltip   import ToolTip
-
+from src.sidebar.sidebar import build_sidebar
+from src.sidebar.rack_setup import open_rack_setup
+from src.sidebar.open_config_load import LoadConfigDialog
+from src.sidebar.open_config_save import SaveConfigDialog
+from src.sidebar.connection import DirectConnectDialog, NetworkConnectDialog, disconnect_device
 
 class VMS3000(tk.Tk):
 
@@ -75,16 +78,17 @@ class VMS3000(tk.Tk):
 
     def _build_menu(self):
         build_menubar(self, self.F, {
-            "new":        self._cmd_new,
-            "open":       self._cmd_open,
-            "save":       self._cmd_save,
-            "save_as":    self._cmd_save_as,
-            "connect":    self._cmd_connect,
-            "disconnect": self._cmd_disconnect,
-            "calibrate":  None,
-            "diag":       self._cmd_diag,
-            "comm":       self._cmd_comm,
-            "about":      self._cmd_about,
+            "new":              self._cmd_new,
+            "open":             self._cmd_open,
+            "save":             self._cmd_save,
+            "save_as":          self._cmd_save_as,
+            "direct_connect":   self._cmd_direct_connect,
+            "network_connect":  self._cmd_network_connect,
+            "disconnect":       self._cmd_disconnect,
+            "calibrate":        None,
+            "diag":             self._cmd_diag,
+            "comm":             self._cmd_comm,
+            "about":            self._cmd_about,
         })
 
     # ── Status bar ────────────────────────────────────────────────────
@@ -177,30 +181,42 @@ class VMS3000(tk.Tk):
             self._rack.clear()
 
     def _cmd_open(self):
-        messagebox.showinfo("Open", "Open functionality ready.", parent=self)
+        self._rack.load_configuration()
 
     def _cmd_save(self):
-        messagebox.showinfo("Save", "Configuration saved.", parent=self)
+        self._rack.save_configuration()
 
     def _cmd_save_as(self):
         messagebox.showinfo("Save As", "Save As ready.", parent=self)
 
     def _cmd_rack_setup(self):
-        messagebox.showinfo(
-            "Rack Setup",
-            f"Rack Address: {self._rack_addr.get()}",
-            parent=self,
-        )
+        def handle_rack_config(cfg: dict):
+            print(f"Rack configuration: {cfg}")
+            # You can apply the configuration here
+        
+        open_rack_setup(self, self.F, on_ok=handle_rack_config)
 
-    def _cmd_connect(self):
+    def _cmd_direct_connect(self):
+        dialog = DirectConnectDialog(self, self.F)
+        dialog.show()
+        # Update connection status after dialog closes
+        self._conn_var.set("Connected")
+        self._conn_lbl.config(fg=T["led_green"])
+        self._conn_dot.config(fg=T["led_green"])
+
+    def _cmd_network_connect(self):
+        dialog = NetworkConnectDialog(self, self.F)
+        dialog.show()
+        # Update connection status after dialog closes
         self._conn_var.set("Connected")
         self._conn_lbl.config(fg=T["led_green"])
         self._conn_dot.config(fg=T["led_green"])
 
     def _cmd_disconnect(self):
-        self._conn_var.set("Not Connected")
-        self._conn_lbl.config(fg=T["led_red"])
-        self._conn_dot.config(fg=T["led_red"])
+        if disconnect_device(self):
+            self._conn_var.set("Not Connected")
+            self._conn_lbl.config(fg=T["led_red"])
+            self._conn_dot.config(fg=T["led_red"])
 
     def _cmd_diag(self):
         messagebox.showinfo("Diagnostics", "System OK — no faults detected.", parent=self)
