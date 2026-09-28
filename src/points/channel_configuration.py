@@ -79,7 +79,7 @@ class ChannelConfigurationDialog:
     # ------------------------------------------------------------------ #
 
     def __init__(self, parent, channel_num, slot_num=6, fonts=None,
-                 rack_type="", active=True):
+                 rack_type="", active=True, on_ok=None):
         self._parent      = parent
         self._channel_num = channel_num
         self._slot_num     = slot_num
@@ -87,6 +87,7 @@ class ChannelConfigurationDialog:
         self._rack_type    = rack_type
         self._active       = active
         self._dialog        = None
+        self._on_ok_callback = on_ok
 
         self._tabs         = {}   # name -> content frame
         self._tab_buttons   = {}  # name -> tab button widget
@@ -561,6 +562,8 @@ class ChannelConfigurationDialog:
 
     def _on_ok(self):
         print("OK pressed")
+        if self._on_ok_callback:
+            self._on_ok_callback(self._channel_num)
         self._dialog.destroy()
 
     def _on_set_defaults(self):

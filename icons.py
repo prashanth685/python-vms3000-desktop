@@ -106,9 +106,9 @@ class IconPainter:
                 fill=_ICON_COLOUR,
                 anchor="mm",
             )
-            print(f"✅  icon [{name}]")
+            print(f"[OK] icon [{name}]")
         except Exception as exc:
-            print(f"⚠️  icon [{name}]: {exc}")
+            print(f"[WARN] icon [{name}]: {exc}")
             self._draw_fallback_glyph(draw, total)
 
         return ImageTk.PhotoImage(img)

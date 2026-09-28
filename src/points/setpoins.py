@@ -173,7 +173,7 @@ class SetpointsDialog:
     def show(self):
         self._dialog = tk.Toplevel(self._parent)
         self._dialog.title(f"Setpoints -Radial Vibration (Slot {self._slot_num})")
-        self._dialog.geometry("680x560")
+        self._dialog.geometry("680x550")
         self._dialog.configure(bg=T["win_bg"])
         self._dialog.resizable(False, False)
 
@@ -663,7 +663,7 @@ class SetpointsDialog:
         tk.Button(
             alert, text="Ok", command=alert.destroy,
             font=self._f_norm, bg=T["btn_primary"], fg=T["btn_primary_fg"],
-            relief="flat", bd=0, padx=30, pady=10,
+            relief="flat", bd=0, padx=50, pady=5,
             cursor="hand2"
         ).pack(pady=10)
 

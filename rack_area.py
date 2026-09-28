@@ -930,10 +930,13 @@ class RackArea:
         """Handle right-click on DIS_MODULE and RELAY_MODULE to show context menu."""
         module = self._slot_data.get(key)
 
-        # Show context menu for DIS_MODULE with Options, Setpoints, Point Names
-        if module == DIS_MODULE:
+        # Show context menu for DIS_MODULE and SIXM_MODULE with Options, Setpoints, Point Names
+        if module == DIS_MODULE or _is_6m_module(module):
+            # Determine model type
+            model = "12M/DIS" if module == DIS_MODULE else "6M"
+
             def on_options(slot):
-                dialog = ProximityMonitor3000ConfigDialog(self._canvas, slot)
+                dialog = ProximityMonitor3000ConfigDialog(self._canvas, slot, model=model)
                 dialog.show()
 
             def on_setpoints(slot):

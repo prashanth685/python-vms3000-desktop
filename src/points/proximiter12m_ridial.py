@@ -65,13 +65,21 @@ class ProximityMonitor3000ConfigDialog:
     # ------------------------------------------------------------------ #
 
     def __init__(self, parent, slot_num=6, fonts=None,
-                 rack_type="VMM/12T/DISP", config_id=""):
+                 rack_type="VMM/12T/DISP", config_id="", model="12M/DIS"):
         self._parent    = parent
         self._slot_num  = slot_num
         self._fonts     = fonts if isinstance(fonts, dict) else {}
         self._rack_type = rack_type
         self._config_id = config_id
+        self._model     = model  # "12M/DIS" or "6M"
         self._dialog    = None
+
+        # Track which channels have been configured
+        self._configured_channels = set()
+
+        # Store copy button references for enable/disable
+        # 12M/DIS has 12 channels (6 pairs), 6M has 6 channels (3 pairs)
+        self._copy_buttons = {}
 
     def _f(self, key, family=FONT_NAME, size=9, weight="normal", slant="roman"):
         if not isinstance(self._fonts, dict):
@@ -103,18 +111,36 @@ class ProximityMonitor3000ConfigDialog:
 
         self._create_identity_row(body)
 
+        # Determine number of channel pairs based on model
+        if self._model == "12M/DIS":
+            num_pairs = 6  # 12 channels
+            columns = 2
+        else:  # 6M
+            num_pairs = 3  # 6 channels
+            columns = 2
+
         pairs_row = tk.Frame(body, bg=C["win_bg"])
         pairs_row.pack(fill="both", expand=True, pady=(10, 0))
-        pairs_row.columnconfigure(0, weight=1)
-        pairs_row.columnconfigure(1, weight=1)
 
-        self._build_channel_pair_group(
-            pairs_row, "Channel Pair 1 and 2", "Channel 1", "Channel 2", 1, 2
-        ).grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        # Configure columns
+        for col in range(columns):
+            pairs_row.columnconfigure(col, weight=1)
 
-        self._build_channel_pair_group(
-            pairs_row, "Channel Pair 3 and 4", "Channel 3", "Channel 4", 3, 4
-        ).grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        # Build channel pair groups
+        for pair_idx in range(num_pairs):
+            ch_a_num = pair_idx * 2 + 1
+            ch_b_num = pair_idx * 2 + 2
+            row = pair_idx // columns
+            col = pair_idx % columns
+
+            self._build_channel_pair_group(
+                pairs_row,
+                f"Channel Pair {ch_a_num} and {ch_b_num}",
+                f"Channel {ch_a_num}",
+                f"Channel {ch_b_num}",
+                ch_a_num,
+                ch_b_num
+            ).grid(row=row, column=col, sticky="nsew", padx=(0, 8) if col == 0 else (8, 0), pady=(0, 8) if row > 0 else 0)
 
         self._create_buttons(body)
 
@@ -282,9 +308,21 @@ class ProximityMonitor3000ConfigDialog:
 
         mid = tk.Frame(body, bg=C["win_bg"])
         mid.grid(row=0, column=1, sticky="n")
-        self._raised_btn(mid, "\u21d2", None, width=3).pack(pady=(28, 4))
+
+        # Create copy buttons and store references
+        copy_a_to_b = self._raised_btn(mid, "\u21d2",
+                                       lambda: self._on_copy(ch_a_num, ch_b_num),
+                                       width=3, enabled=False)
+        copy_a_to_b.pack(pady=(28, 4))
         self._raised_btn(mid, "Copy", None, width=8).pack(pady=4)
-        self._raised_btn(mid, "\u21d0", None, width=3, enabled=False).pack(pady=(4, 0))
+        copy_b_to_a = self._raised_btn(mid, "\u21d0",
+                                       lambda: self._on_copy(ch_b_num, ch_a_num),
+                                       width=3, enabled=False)
+        copy_b_to_a.pack(pady=(4, 0))
+
+        # Store button references based on channel numbers
+        self._copy_buttons[f"{ch_a_num}_to_{ch_b_num}"] = copy_a_to_b
+        self._copy_buttons[f"{ch_b_num}_to_{ch_a_num}"] = copy_b_to_a
 
         self._build_channel_box(body, ch_b_name, ch_b_num).grid(row=0, column=2, sticky="nsew", padx=(8, 0))
 
@@ -390,6 +428,11 @@ class ProximityMonitor3000ConfigDialog:
         Channel-1 .. Channel-4 reference screenshots) for the given
         channel, pre-filled with this module's slot and rack type.
         """
+        def on_channel_config_ok(configured_channel):
+            """Callback when channel configuration is saved."""
+            self._configured_channels.add(configured_channel)
+            self._update_copy_buttons()
+
         dialog = ChannelConfigurationDialog(
             self._dialog,
             channel_num,
@@ -397,8 +440,33 @@ class ProximityMonitor3000ConfigDialog:
             fonts=self._fonts,
             rack_type=self._rack_type,
             active=active_var.get() if active_var is not None else True,
+            on_ok=on_channel_config_ok,
         )
         dialog.show()
+
+    def _update_copy_buttons(self):
+        """Enable/disable copy buttons based on channel configuration state."""
+        # Enable copy buttons dynamically based on configured channels
+        for button_key, button in self._copy_buttons.items():
+            if button is None:
+                continue
+
+            # Parse button key to get source channel number
+            # Format: "X_to_Y" where X is the source channel
+            source_channel = int(button_key.split("_")[0])
+
+            # Enable the button if the source channel has been configured
+            if source_channel in self._configured_channels:
+                button.config(state="normal", cursor="hand2")
+
+    def _on_copy(self, from_channel, to_channel):
+        """Copy configuration from one channel to another."""
+        print(f"Copying configuration from Channel {from_channel} to Channel {to_channel}")
+        # TODO: Implement actual configuration data copying
+        # This would involve storing channel configuration data and copying it
+        # For now, just mark the destination as configured
+        self._configured_channels.add(to_channel)
+        self._update_copy_buttons()
 
     def _on_ok(self):
         print("OK pressed")
