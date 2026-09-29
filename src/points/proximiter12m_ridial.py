@@ -113,10 +113,10 @@ class ProximityMonitor3000ConfigDialog:
 
         # Determine number of channel pairs based on model
         if self._model == "12M/DIS":
-            num_pairs = 6  # 12 channels
+            num_pairs = 2  # 4 channels (pairs 1-2 and 3-4)
             columns = 2
         else:  # 6M
-            num_pairs = 3  # 6 channels
+            num_pairs = 2  # 4 channels (pairs 1-2 and 3-4)
             columns = 2
 
         pairs_row = tk.Frame(body, bg=C["win_bg"])

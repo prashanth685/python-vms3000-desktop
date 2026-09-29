@@ -1,158 +1,346 @@
 """
-sidebar.py — VMS 3000  •  Professional navy sidebar
-Fixed 148 px wide.  Section header + labelled nav buttons + bottom brand block.
+sidebar.py — VMS 3000 • Professional navy sidebar
+Modern navigation buttons with unique accent colors.
 """
 
 import tkinter as tk
 import tkinter.font as tkfont
 from theme import T
 
+
 _NAV_ITEMS = [
-    # (label, sub-label, cmd_key)
-    ("Rack Setup",  "Configure slots",  "rack_setup"),
-    ("Load",        "Open config file", "load"),
-    ("Save",        "Save config file", "save"),
+    # (label, sub-label, cmd_key, accent_color)
+    ("Rack Setup",  "Configure slots",  "rack_setup", "#19C3B1"),  # Teal
+    ("Load",        "Open config file", "load",       "#4F8CFF"),  # Blue
+    ("Save",        "Save config file", "save",       "#A56EFF"),  # Purple
 ]
 
 
 def build_sidebar(parent, fonts: dict, commands: dict) -> tk.Frame:
-    sb = tk.Frame(parent, bg=T["sidebar_bg"], width=220)
+    sb = tk.Frame(
+        parent,
+        bg=T["sidebar_bg"],
+        width=220
+    )
     sb.pack(side="left", fill="y")
     sb.pack_propagate(False)
 
     # ── Top accent line ────────────────────────────────────────────
-    tk.Frame(sb, bg=T["accent_teal"], height=3).pack(fill="x")
+    tk.Frame(
+        sb,
+        bg=T["accent_teal"],
+        height=3
+    ).pack(fill="x")
 
-    # ── Section header ─────────────────────────────────────────────
-    hdr = tk.Frame(sb, bg=T["sidebar_dark"], pady=14)
+    # ── Section header ────────────────────────────────────────────
+    hdr = tk.Frame(
+        sb,
+        bg=T["sidebar_dark"],
+        pady=14
+    )
     hdr.pack(fill="x")
+
     tk.Label(
         hdr,
         text="N A V I G A T I O N",
-        font=tkfont.Font(family="Segoe UI", size=8, weight="bold"),
+        font=tkfont.Font(
+            family="Segoe UI",
+            size=8,
+            weight="bold"
+        ),
         bg=T["sidebar_dark"],
-        fg="#5a7a9a",
-    ).pack(padx=12, anchor="w")
+        fg="#6B87A3",
+    ).pack(padx=14, anchor="w")
 
-    # ── Nav buttons ────────────────────────────────────────────────
-    for label, sublabel, key in _NAV_ITEMS:
-        _nav_btn(sb, fonts, label, sublabel, commands.get(key))
-        tk.Frame(sb, bg=T["sidebar_rule"], height=1).pack(fill="x", padx=8, pady=4)
+    # ── Navigation buttons ───────────────────────────────────────
+    for label, sublabel, key, accent_color in _NAV_ITEMS:
+        _nav_btn(
+            sb,
+            fonts,
+            label,
+            sublabel,
+            commands.get(key),
+            accent_color
+        )
 
-    # ── Spacer ─────────────────────────────────────────────────────
-    tk.Frame(sb, bg=T["sidebar_bg"]).pack(fill="both", expand=True)
+    # ── Spacer ────────────────────────────────────────────────────
+    tk.Frame(
+        sb,
+        bg=T["sidebar_bg"]
+    ).pack(fill="both", expand=True)
 
-    # ── Status section ─────────────────────────────────────────────
+    # ── Status section ────────────────────────────────────────────
     _status_block(sb, fonts)
 
-    # ── Bottom brand ───────────────────────────────────────────────
+    # ── Bottom brand ──────────────────────────────────────────────
     _brand_block(sb, fonts)
 
     return sb
 
 
-def _nav_btn(parent: tk.Frame, fonts: dict, label: str, sublabel: str, cmd) -> None:
-    """Two-line nav button with hover highlight."""
-    btn_frame = tk.Frame(parent, bg=T["sidebar_btn"], cursor="hand2")
-    btn_frame.pack(fill="x", padx=0, pady=4)
+def _nav_btn(
+    parent: tk.Frame,
+    fonts: dict,
+    label: str,
+    sublabel: str,
+    cmd,
+    accent_color: str
+) -> None:
+    """
+    Modern two-line navigation button.
 
-    inner = tk.Frame(btn_frame, bg=T["sidebar_btn"], padx=12, pady=10)
-    inner.pack(fill="x")
+    Each button has:
+      • Unique accent color
+      • Dark card background
+      • Hover highlight
+      • Pressed state
+      • Colored left indicator
+      • Subtle visual separation
+    """
 
+    normal_bg = "#172A3D"
+    hover_bg = "#20384F"
+    pressed_bg = "#102235"
+
+    # Outer card
+    btn_frame = tk.Frame(
+        parent,
+        bg=normal_bg,
+        cursor="hand2",
+        height=62
+    )
+    btn_frame.pack(
+        fill="x",
+        padx=8,
+        pady=4
+    )
+    btn_frame.pack_propagate(False)
+
+    # ── Left accent indicator ────────────────────────────────────
+    accent = tk.Frame(
+        btn_frame,
+        bg=accent_color,
+        width=4
+    )
+    accent.pack(
+        side="left",
+        fill="y"
+    )
+
+    # ── Content area ─────────────────────────────────────────────
+    inner = tk.Frame(
+        btn_frame,
+        bg=normal_bg,
+        padx=12,
+        pady=9
+    )
+    inner.pack(
+        side="left",
+        fill="both",
+        expand=True
+    )
+
+    # Main label
     lbl_main = tk.Label(
         inner,
         text=label,
         font=fonts["ui_b"],
-        bg=T["sidebar_btn"],
-        fg=T["sidebar_text_hi"],
+        bg=normal_bg,
+        fg="#F2F7FC",
         anchor="w",
+        cursor="hand2",
     )
     lbl_main.pack(fill="x")
 
+    # Sub label
     lbl_sub = tk.Label(
         inner,
         text=sublabel,
-        font=tkfont.Font(family="Segoe UI", size=8),
-        bg=T["sidebar_btn"],
-        fg=T["sidebar_text"],
+        font=tkfont.Font(
+            family="Segoe UI",
+            size=8
+        ),
+        bg=normal_bg,
+        fg="#7891A8",
         anchor="w",
+        cursor="hand2",
     )
-    lbl_sub.pack(fill="x")
+    lbl_sub.pack(
+        fill="x",
+        pady=(2, 0)
+    )
 
-    # Left accent bar (hidden by default, shown on hover/press)
-    accent = tk.Frame(btn_frame, bg=T["sidebar_btn"], width=4)
-    accent.place(x=0, y=0, relheight=1)
+    # ── Small colored status dot ─────────────────────────────────
+    dot = tk.Label(
+        btn_frame,
+        text="●",
+        font=tkfont.Font(
+            family="Segoe UI",
+            size=7
+        ),
+        bg=normal_bg,
+        fg=accent_color,
+        cursor="hand2",
+    )
+    dot.pack(
+        side="right",
+        padx=(0, 12)
+    )
 
-    widgets = [btn_frame, inner, lbl_main, lbl_sub, accent]
+    widgets = [
+        btn_frame,
+        inner,
+        lbl_main,
+        lbl_sub,
+        dot,
+    ]
 
-    def _enter(e):
-        for w in widgets:
-            w.config(bg=T["sidebar_btn_h"])
-        accent.config(bg=T["accent"])
+    def _enter(event=None):
+        for widget in widgets:
+            widget.config(bg=hover_bg)
 
-    def _leave(e):
-        for w in widgets:
-            w.config(bg=T["sidebar_btn"])
-        accent.config(bg=T["sidebar_btn"])
+        accent.config(bg=accent_color)
 
-    def _press(e):
-        for w in widgets:
-            w.config(bg=T["sidebar_btn_p"])
+        lbl_main.config(
+            fg="#FFFFFF"
+        )
 
-    def _release(e):
-        for w in widgets:
-            w.config(bg=T["sidebar_btn_h"])
+        lbl_sub.config(
+            fg="#9DB4C9"
+        )
+
+    def _leave(event=None):
+        for widget in widgets:
+            widget.config(bg=normal_bg)
+
+        accent.config(bg=accent_color)
+
+        lbl_main.config(
+            fg="#F2F7FC"
+        )
+
+        lbl_sub.config(
+            fg="#7891A8"
+        )
+
+    def _press(event=None):
+        for widget in widgets:
+            widget.config(bg=pressed_bg)
+
+        accent.config(
+            bg=accent_color
+        )
+
+    def _release(event=None):
+        for widget in widgets:
+            widget.config(bg=hover_bg)
+
+        accent.config(
+            bg=accent_color
+        )
+
         if cmd:
             cmd()
 
-    for w in [btn_frame, inner, lbl_main, lbl_sub]:
-        w.bind("<Enter>",           _enter)
-        w.bind("<Leave>",           _leave)
-        w.bind("<ButtonPress-1>",   _press)
-        w.bind("<ButtonRelease-1>", _release)
+    # Bind everything except accent bar
+    for widget in widgets:
+        widget.bind("<Enter>", _enter)
+        widget.bind("<Leave>", _leave)
+        widget.bind("<ButtonPress-1>", _press)
+        widget.bind("<ButtonRelease-1>", _release)
 
 
 def _status_block(parent: tk.Frame, fonts: dict) -> None:
-    """Small connection status indicator."""
-    blk = tk.Frame(parent, bg=T["sidebar_dark"], pady=12, padx=12)
+    """Modern device connection status."""
+
+    blk = tk.Frame(
+        parent,
+        bg=T["sidebar_dark"],
+        pady=13,
+        padx=14
+    )
     blk.pack(fill="x")
 
     tk.Label(
         blk,
         text="DEVICE STATUS",
-        font=tkfont.Font(family="Segoe UI", size=8, weight="bold"),
+        font=tkfont.Font(
+            family="Segoe UI",
+            size=8,
+            weight="bold"
+        ),
         bg=T["sidebar_dark"],
-        fg="#5a7a9a",
+        fg="#6B87A3",
     ).pack(anchor="w")
 
-    row = tk.Frame(blk, bg=T["sidebar_dark"])
-    row.pack(anchor="w", pady=(8, 0))
+    row = tk.Frame(
+        blk,
+        bg=T["sidebar_dark"]
+    )
+    row.pack(
+        anchor="w",
+        pady=(9, 0)
+    )
 
-    tk.Label(row, text="●", font=tkfont.Font(size=10),
-             bg=T["sidebar_dark"], fg=T["led_red"]).pack(side="left")
-    tk.Label(row, text="  Not Connected",
-             font=tkfont.Font(family="Segoe UI", size=9),
-             bg=T["sidebar_dark"], fg=T["sidebar_text"]).pack(side="left")
+    tk.Label(
+        row,
+        text="●",
+        font=tkfont.Font(size=10),
+        bg=T["sidebar_dark"],
+        fg=T["led_red"]
+    ).pack(side="left")
+
+    tk.Label(
+        row,
+        text="  Not Connected",
+        font=tkfont.Font(
+            family="Segoe UI",
+            size=9
+        ),
+        bg=T["sidebar_dark"],
+        fg=T["sidebar_text"]
+    ).pack(side="left")
 
 
 def _brand_block(parent: tk.Frame, fonts: dict) -> None:
-    brand = tk.Frame(parent, bg=T["sidebar_dark"], pady=14)
+    """Bottom company branding."""
+
+    brand = tk.Frame(
+        parent,
+        bg=T["sidebar_dark"],
+        pady=14
+    )
     brand.pack(fill="x")
 
-    tk.Frame(brand, bg=T["accent_teal"], height=1).pack(fill="x", pady=(0, 10))
+    tk.Frame(
+        brand,
+        bg=T["accent_teal"],
+        height=1
+    ).pack(
+        fill="x",
+        pady=(0, 10)
+    )
 
     tk.Label(
         brand,
         text="SARAYU INFOTECH",
-        font=tkfont.Font(family="Segoe UI", size=8, weight="bold"),
+        font=tkfont.Font(
+            family="Segoe UI",
+            size=8,
+            weight="bold"
+        ),
         bg=T["sidebar_dark"],
-        fg="#5a7a9a",
+        fg="#6B87A3",
     ).pack()
 
     tk.Label(
         brand,
         text="SOLUTIONS PVT LTD",
-        font=tkfont.Font(family="Segoe UI", size=8),
+        font=tkfont.Font(
+            family="Segoe UI",
+            size=8
+        ),
         bg=T["sidebar_dark"],
-        fg="#465e76",
+        fg="#465E76",
     ).pack()
+

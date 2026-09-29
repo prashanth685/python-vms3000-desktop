@@ -315,12 +315,12 @@ class RackArea:
 
             if module == DIS_MODULE:
                 # DIS occupies raw slots i and i+1 (displayed numbers
-                # i-1 and i respectively). Show the pair's SECOND /
-                # higher displayed number — i.e. "i" — not the first
-                # slot's own number (display_num = i-1).
+                # i-1 and i respectively). Show the pair's FIRST /
+                # lower displayed number — i.e. "i-1" — not the second
+                # slot's number (display_num = i).
                 cx = L["slot_x0"] + (i - 1 + 1.0) * L["sw"]
                 c.create_text(cx, L["TOP_Y"] - 14,
-                              text=str(i),
+                              text=str(display_num),
                               font=self._fonts["num"],
                               fill=fill_color,
                               anchor="center")

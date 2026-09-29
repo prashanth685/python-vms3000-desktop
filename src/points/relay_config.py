@@ -203,25 +203,31 @@ class RelayConfigDialog:
         top_split.grid_columnconfigure(1, weight=42, minsize=240)
         top_split.grid_rowconfigure(0, weight=1, minsize=190)
 
-        # ---- Left: Available Slots (rack graphic + keypad together) ----
+        # ---- Left: Available Slots (rack graphic only) ----
         slots_outer, slots_body = group_box(top_split, "Available Slots", self._f_group)
         slots_outer.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-
-        slots_split = tk.Frame(slots_body, bg=T["win_bg"])
-        slots_split.pack(fill="both", expand=True)
-
-        rack_col = tk.Frame(slots_split, bg=T["win_bg"])
-        rack_col.pack(side="left", fill="both", expand=True)
-        self._build_slots_rack(rack_col)
-
-        keypad_col = tk.Frame(slots_split, bg=T["win_bg"])
-        keypad_col.pack(side="left", padx=(8, 0))
-        self._build_keypad(keypad_col)
+        self._build_slots_rack(slots_body)
 
         # ---- Right: Available Monitor channels/ Alarms ----
         mon_outer, mon_body = group_box(top_split, "Available Monitor channels/ Alarms", self._f_group)
         mon_outer.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
-        self._build_monitor_list(mon_body)
+        
+        # Split into monitor list and keypad/buttons
+        mon_split = tk.Frame(mon_body, bg=T["win_bg"])
+        mon_split.pack(fill="both", expand=True)
+        
+        # Top: Monitor channels list
+        self._build_monitor_list(mon_split)
+        
+        # Bottom: Logic keypad and buttons
+        keypad_frame = tk.Frame(mon_split, bg=T["win_bg"])
+        keypad_frame.pack(fill="x", pady=(8, 0))
+        self._build_keypad(keypad_frame)
+        
+        # Channel configuration slots below keypad
+        self._channel_config_container = tk.Frame(mon_split, bg=T["win_bg"])
+        self._channel_config_container.pack(fill="both", expand=True, pady=(8, 0))
+        self._build_channel_configuration_slots(self._channel_config_container)
 
         # Now that both the rack graphic and the monitor list exist, show the
         # Available Monitor channels/Alarms for whichever slot starts selected
@@ -368,6 +374,10 @@ class RelayConfigDialog:
             self._monitor_listbox.delete(0, "end")
             for entry in entries:
                 self._monitor_listbox.insert("end", entry)
+        
+        # Update channel configuration slots
+        if hasattr(self, "_channel_config_container"):
+            self._build_channel_configuration_slots(self._channel_config_container)
 
     @staticmethod
     def _channel_count_for_module(module):
@@ -465,9 +475,6 @@ class RelayConfigDialog:
     #  Logic keypad: And(*) Or(+) ( ) Enter <- CLR Copy  + % readout
     # ──────────────────────────────────────────────────────────────────
     def _build_keypad(self, parent):
-        grid = tk.Frame(parent, bg=T["win_bg"])
-        grid.pack(side="left")
-
         def add(txt):
             # Insert directly into the Alarm Drive Logic box at the cursor,
             # so the keypad's And/Or/(/) presses are visibly reflected there
@@ -476,26 +483,34 @@ class RelayConfigDialog:
             self._insert_logic_text(txt)
 
         btn_font = self._f_norm
-        r1 = tk.Frame(grid, bg=T["win_bg"]); r1.pack()
-        classic_button(r1, "And [*]", lambda: add("*"), btn_font, width=7).pack(side="left", padx=2, pady=2)
-        classic_button(r1, "Or [+]", lambda: add("+"), btn_font, width=7).pack(side="left", padx=2, pady=2)
-        r2 = tk.Frame(grid, bg=T["win_bg"]); r2.pack()
-        classic_button(r2, "(", lambda: add("("), btn_font, width=7).pack(side="left", padx=2, pady=2)
-        classic_button(r2, ")", lambda: add(")"), btn_font, width=7).pack(side="left", padx=2, pady=2)
-
-        enter_holder = tk.Frame(parent, bg=T["win_bg"])
-        enter_holder.pack(side="left", padx=6)
-        classic_button(enter_holder, "Enter", self._on_logic_enter, self._f_bold,
-                        width=6).pack(fill="both", expand=True, ipady=14)
-
-        side_col = tk.Frame(parent, bg=T["win_bg"])
-        side_col.pack(side="left", padx=(8, 0))
-        classic_button(side_col, "<-", self._on_logic_backspace, btn_font, width=6).pack(pady=2, fill="x")
-        classic_button(side_col, "CLR", self._on_logic_clear, btn_font, width=6).pack(pady=2, fill="x")
-        classic_button(side_col, "Copy", self._on_copy, btn_font, width=6).pack(pady=2, fill="x")
-
-        pct_row = tk.Frame(parent, bg=T["win_bg"])
-        pct_row.pack(side="bottom", fill="x", pady=(6, 0))
+        
+        # Main keypad container
+        keypad_container = tk.Frame(parent, bg=T["win_bg"])
+        keypad_container.pack(fill="x")
+        
+        # Top row: And [*] Or [+]
+        top_row = tk.Frame(keypad_container, bg=T["win_bg"])
+        top_row.pack(fill="x", pady=2)
+        classic_button(top_row, "And [*]", lambda: add("*"), btn_font, width=10).pack(side="left", padx=2)
+        classic_button(top_row, "Or [+]", lambda: add("+"), btn_font, width=10).pack(side="left", padx=2)
+        
+        # Second row: ( ) Enter
+        mid_row = tk.Frame(keypad_container, bg=T["win_bg"])
+        mid_row.pack(fill="x", pady=2)
+        classic_button(mid_row, "(", lambda: add("("), btn_font, width=6).pack(side="left", padx=2)
+        classic_button(mid_row, ")", lambda: add(")"), btn_font, width=6).pack(side="left", padx=2)
+        classic_button(mid_row, "Enter", self._on_logic_enter, self._f_bold, width=8).pack(side="left", padx=2)
+        
+        # Third row: <- CLR Copy
+        bot_row = tk.Frame(keypad_container, bg=T["win_bg"])
+        bot_row.pack(fill="x", pady=2)
+        classic_button(bot_row, "<-", self._on_logic_backspace, btn_font, width=6).pack(side="left", padx=2)
+        classic_button(bot_row, "CLR", self._on_logic_clear, btn_font, width=6).pack(side="left", padx=2)
+        classic_button(bot_row, "Copy", self._on_copy, btn_font, width=6).pack(side="left", padx=2)
+        
+        # Percentage readout at bottom
+        pct_row = tk.Frame(keypad_container, bg=T["win_bg"])
+        pct_row.pack(fill="x", pady=(6, 0))
 
         track = tk.Frame(pct_row, bg=T["field_bg"], bd=2, relief="sunken", height=8)
         track.pack(side="left", fill="x", expand=True, padx=(0, 6))
@@ -581,6 +596,52 @@ class RelayConfigDialog:
         code = entry.split(" ", 1)[0]
         self._insert_logic_text(code)
 
+    def _build_channel_configuration_slots(self, parent):
+        """Build the channel configuration slots display as shown in the image.
+        This shows the detailed channel configuration for the selected module."""
+        # Clear existing content
+        for widget in parent.winfo_children():
+            widget.destroy()
+        
+        # Get the selected slot and module
+        selected_slot = self.config_data["selected_slot"]
+        module = self._rack_config.get(f"0_{selected_slot}")
+        
+        # Only show channel configuration for modules that have channels
+        n_channels = self._channel_count_for_module(module)
+        if n_channels <= 0:
+            tk.Label(parent, text="No channel configuration available",
+                    font=self._f_small, bg=T["win_bg"], fg=T["text_dim"]).pack(anchor="w")
+            return
+        
+        # Header for channel configuration
+        tk.Label(parent, text=f"Channel Configuration for Slot {selected_slot}",
+                font=self._f_bold, bg=T["win_bg"], fg=T["text"]).pack(anchor="w", pady=(0, 4))
+        
+        # Create channel slots
+        for ch in range(1, n_channels + 1):
+            channel_frame = tk.Frame(parent, bg=T["field_bg"], bd=1, relief="sunken")
+            channel_frame.pack(fill="x", pady=2)
+            
+            # Channel number and status
+            ch_info = tk.Frame(channel_frame, bg=T["field_bg"])
+            ch_info.pack(fill="x", padx=4, pady=2)
+            
+            tk.Label(ch_info, text=f"Channel {ch}", font=self._f_bold,
+                    bg=T["field_bg"], fg=T["text"]).pack(side="left")
+            
+            # Active checkbox
+            active_var = tk.BooleanVar(value=True)
+            tk.Checkbutton(ch_info, text="Active", variable=active_var,
+                          font=self._f_small, bg=T["field_bg"], fg=T["text"],
+                          activebackground=T["field_bg"]).pack(side="left", padx=(10, 0))
+            
+            # Configuration button
+            config_btn = classic_button(channel_frame, "Config", 
+                                       lambda c=ch: self._on_channel_config(c),
+                                       self._f_small, width=8)
+            config_btn.pack(side="right", padx=4, pady=2)
+
     # ──────────────────────────────────────────────────────────────────
     #  Standard Relay Association
     # ──────────────────────────────────────────────────────────────────
@@ -610,6 +671,31 @@ class RelayConfigDialog:
 
     def _on_voting_setup(self):
         print(f"And Voting Setup for slot {self._slot_num}")
+
+    def _on_channel_config(self, channel_num):
+        """Open channel configuration dialog for the specified channel."""
+        selected_slot = self.config_data["selected_slot"]
+        print(f"Opening channel configuration for Slot {selected_slot}, Channel {channel_num}")
+        
+        # Import and open the channel configuration dialog
+        try:
+            from points.channel_configuration import ChannelConfigurationDialog
+            
+            def on_channel_config_ok(configured_channel):
+                print(f"Channel {configured_channel} configuration saved")
+            
+            dialog = ChannelConfigurationDialog(
+                self._dialog,
+                channel_num,
+                slot_num=selected_slot,
+                fonts={"norm": self._f_norm, "bold": self._f_bold},
+                rack_type=self._rack_type,
+                active=True,
+                on_ok=on_channel_config_ok,
+            )
+            dialog.show()
+        except Exception as e:
+            print(f"Error opening channel configuration: {e}")
 
     # ──────────────────────────────────────────────────────────────────
     #  Alarm Drive Logic
