@@ -52,7 +52,24 @@ class VMS3000(tk.Tk):
 
         # ── Build UI ─────────────────────────────────────────────────
         self._build_menu()
-        self._icons = build_toolbar(self, self.F, self._rack_addr)
+        
+        # Define toolbar command callbacks
+        toolbar_callbacks = {
+            "new": self._cmd_new,
+            "open": self._cmd_open,
+            "save": self._cmd_save,
+            "print": lambda: print("Print action"),
+            "settings": lambda: print("Settings action"),
+            "cut": lambda: print("Cut action"),
+            "copy": lambda: print("Copy action"),
+            "paste": lambda: print("Paste action"),
+            "upload": lambda: print("Upload action"),
+            "download": lambda: print("Download action"),
+            "refresh": lambda: print("Refresh action"),
+            "help": self._cmd_about,
+        }
+        
+        self._icons = build_toolbar(self, self.F, self._rack_addr, toolbar_callbacks)
 
         # ── Border after toolbar ───────────────────────────────────────
         tk.Frame(self, bg=T["toolbar_border"], height=2).pack(fill="x", padx=0)

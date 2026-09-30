@@ -148,7 +148,7 @@ class RelayConfigDialog:
     def show(self):
         self._dialog = tk.Toplevel(self._parent)
         self._dialog.title("Relay Configuration")
-        self._dialog.geometry("700x560")
+        self._dialog.geometry("700x600")
         self._dialog.minsize(680, 520)
         self._dialog.configure(bg=T["win_bg"])
         self._dialog.resizable(True, True)
@@ -212,22 +212,13 @@ class RelayConfigDialog:
         mon_outer, mon_body = group_box(top_split, "Available Monitor channels/ Alarms", self._f_group)
         mon_outer.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
         
-        # Split into monitor list and keypad/buttons
-        mon_split = tk.Frame(mon_body, bg=T["win_bg"])
-        mon_split.pack(fill="both", expand=True)
+        # Monitor channels list
+        self._build_monitor_list(mon_body)
         
-        # Top: Monitor channels list
-        self._build_monitor_list(mon_split)
-        
-        # Bottom: Logic keypad and buttons
-        keypad_frame = tk.Frame(mon_split, bg=T["win_bg"])
+        # Logic keypad and buttons below the list
+        keypad_frame = tk.Frame(mon_body, bg=T["win_bg"])
         keypad_frame.pack(fill="x", pady=(8, 0))
         self._build_keypad(keypad_frame)
-        
-        # Channel configuration slots below keypad
-        self._channel_config_container = tk.Frame(mon_split, bg=T["win_bg"])
-        self._channel_config_container.pack(fill="both", expand=True, pady=(8, 0))
-        self._build_channel_configuration_slots(self._channel_config_container)
 
         # Now that both the rack graphic and the monitor list exist, show the
         # Available Monitor channels/Alarms for whichever slot starts selected
@@ -375,9 +366,13 @@ class RelayConfigDialog:
             for entry in entries:
                 self._monitor_listbox.insert("end", entry)
         
-        # Update channel configuration slots
-        if hasattr(self, "_channel_config_container"):
-            self._build_channel_configuration_slots(self._channel_config_container)
+        # Update channel association dropdown based on available channels
+        self._update_channel_association_dropdown(module)
+        
+        # Auto-populate Alarm Drive Logic when a module with channels is selected
+        # and there's a display added in rack
+        if module and self._channel_count_for_module(module) > 0:
+            self._auto_populate_alarm_logic(slot_num, module)
 
     @staticmethod
     def _channel_count_for_module(module):
@@ -597,50 +592,8 @@ class RelayConfigDialog:
         self._insert_logic_text(code)
 
     def _build_channel_configuration_slots(self, parent):
-        """Build the channel configuration slots display as shown in the image.
-        This shows the detailed channel configuration for the selected module."""
-        # Clear existing content
-        for widget in parent.winfo_children():
-            widget.destroy()
-        
-        # Get the selected slot and module
-        selected_slot = self.config_data["selected_slot"]
-        module = self._rack_config.get(f"0_{selected_slot}")
-        
-        # Only show channel configuration for modules that have channels
-        n_channels = self._channel_count_for_module(module)
-        if n_channels <= 0:
-            tk.Label(parent, text="No channel configuration available",
-                    font=self._f_small, bg=T["win_bg"], fg=T["text_dim"]).pack(anchor="w")
-            return
-        
-        # Header for channel configuration
-        tk.Label(parent, text=f"Channel Configuration for Slot {selected_slot}",
-                font=self._f_bold, bg=T["win_bg"], fg=T["text"]).pack(anchor="w", pady=(0, 4))
-        
-        # Create channel slots
-        for ch in range(1, n_channels + 1):
-            channel_frame = tk.Frame(parent, bg=T["field_bg"], bd=1, relief="sunken")
-            channel_frame.pack(fill="x", pady=2)
-            
-            # Channel number and status
-            ch_info = tk.Frame(channel_frame, bg=T["field_bg"])
-            ch_info.pack(fill="x", padx=4, pady=2)
-            
-            tk.Label(ch_info, text=f"Channel {ch}", font=self._f_bold,
-                    bg=T["field_bg"], fg=T["text"]).pack(side="left")
-            
-            # Active checkbox
-            active_var = tk.BooleanVar(value=True)
-            tk.Checkbutton(ch_info, text="Active", variable=active_var,
-                          font=self._f_small, bg=T["field_bg"], fg=T["text"],
-                          activebackground=T["field_bg"]).pack(side="left", padx=(10, 0))
-            
-            # Configuration button
-            config_btn = classic_button(channel_frame, "Config", 
-                                       lambda c=ch: self._on_channel_config(c),
-                                       self._f_small, width=8)
-            config_btn.pack(side="right", padx=4, pady=2)
+        """Channel configuration slots removed - not needed in the simplified UI."""
+        pass
 
     # ──────────────────────────────────────────────────────────────────
     #  Standard Relay Association
@@ -655,6 +608,7 @@ class RelayConfigDialog:
         )
         self._channel_combo.set(self.config_data["channel_association"])
         self._channel_combo.pack(anchor="w", pady=(2, 8), fill="x")
+        self._channel_combo.bind("<<ComboboxSelected>>", self._on_channel_selected)
 
         self._active_var = tk.BooleanVar(value=self.config_data["active"])
         tk.Checkbutton(parent, text="Active", variable=self._active_var,
@@ -672,30 +626,105 @@ class RelayConfigDialog:
     def _on_voting_setup(self):
         print(f"And Voting Setup for slot {self._slot_num}")
 
-    def _on_channel_config(self, channel_num):
-        """Open channel configuration dialog for the specified channel."""
-        selected_slot = self.config_data["selected_slot"]
-        print(f"Opening channel configuration for Slot {selected_slot}, Channel {channel_num}")
+    def _on_channel_selected(self, event=None):
+        """When a channel is selected in the Channel Association dropdown,
+        populate the Alarm Drive Logic text area with the available monitor
+        channels/alarms for that channel when there's a display added in rack."""
+        selected_channel = self._channel_combo.get()
+        if not selected_channel:
+            return
         
-        # Import and open the channel configuration dialog
+        # Extract channel number from "Channel X" format
         try:
-            from points.channel_configuration import ChannelConfigurationDialog
-            
-            def on_channel_config_ok(configured_channel):
-                print(f"Channel {configured_channel} configuration saved")
-            
-            dialog = ChannelConfigurationDialog(
-                self._dialog,
-                channel_num,
-                slot_num=selected_slot,
-                fonts={"norm": self._f_norm, "bold": self._f_bold},
-                rack_type=self._rack_type,
-                active=True,
-                on_ok=on_channel_config_ok,
-            )
-            dialog.show()
-        except Exception as e:
-            print(f"Error opening channel configuration: {e}")
+            channel_num = int(selected_channel.split()[-1])
+        except (IndexError, ValueError):
+            return
+        
+        # Get the selected slot and module
+        selected_slot = self.config_data["selected_slot"]
+        module = self._rack_config.get(f"0_{selected_slot}")
+        
+        # Only populate if there's a module with channels in the selected slot
+        n_channels = self._channel_count_for_module(module)
+        if n_channels <= 0 or channel_num > n_channels:
+            return
+        
+        # Build the monitor channel entries for the selected channel
+        entries = []
+        # Add Alert and Danger for the specific channel
+        entries.append(f"S{selected_slot}C{channel_num:02d}A1 (Slot {selected_slot} Channel {channel_num} Alert)")
+        entries.append(f"S{selected_slot}C{channel_num:02d}A2 (Slot {selected_slot} Channel {channel_num} Danger)")
+        
+        # Populate the Alarm Drive Logic text area with these entries
+        if hasattr(self, "_alarm_logic_text"):
+            # Clear existing content
+            self._alarm_logic_text.delete("1.0", "end")
+            # Insert the channel entries
+            logic_expression = " + ".join([entry.split()[0] for entry in entries])
+            self._alarm_logic_text.insert("1.0", logic_expression)
+            self.config_data["alarm_drive_logic"] = logic_expression
+            print(f"Populated Alarm Drive Logic for Channel {channel_num}: {logic_expression}")
+
+    def _auto_populate_alarm_logic(self, slot_num, module):
+        """Auto-populate the Alarm Drive Logic text area when a module with
+        channels is selected in the rack (display added in rank)."""
+        n_channels = self._channel_count_for_module(module)
+        if n_channels <= 0:
+            return
+        
+        # Get the currently selected channel from the dropdown
+        selected_channel = self._channel_combo.get()
+        if not selected_channel:
+            return
+        
+        # Extract channel number
+        try:
+            channel_num = int(selected_channel.split()[-1])
+        except (IndexError, ValueError):
+            channel_num = 1  # Default to channel 1 if parsing fails
+        
+        # Validate channel number against available channels
+        if channel_num > n_channels:
+            channel_num = 1  # Use first available channel if selected is out of range
+        
+        # Build monitor channel entries for the selected channel
+        entries = []
+        entries.append(f"S{slot_num}C{channel_num:02d}A1 (Slot {slot_num} Channel {channel_num} Alert)")
+        entries.append(f"S{slot_num}C{channel_num:02d}A2 (Slot {slot_num} Channel {channel_num} Danger)")
+        
+        # Populate the Alarm Drive Logic text area
+        if hasattr(self, "_alarm_logic_text"):
+            self._alarm_logic_text.delete("1.0", "end")
+            logic_expression = " + ".join([entry.split()[0] for entry in entries])
+            self._alarm_logic_text.insert("1.0", logic_expression)
+            self.config_data["alarm_drive_logic"] = logic_expression
+            print(f"Auto-populated Alarm Drive Logic for Slot {slot_num}, Channel {channel_num}: {logic_expression}")
+
+    def _update_channel_association_dropdown(self, module):
+        """Update the Channel Association dropdown based on the number of
+        available channels in the selected module."""
+        n_channels = self._channel_count_for_module(module)
+        
+        if n_channels <= 0:
+            # If no channels, disable the dropdown or show empty
+            if hasattr(self, "_channel_combo"):
+                self._channel_combo['values'] = ["No Channels"]
+                self._channel_combo.set("No Channels")
+                self._channel_combo.config(state="disabled")
+        else:
+            # Update dropdown with available channels
+            if hasattr(self, "_channel_combo"):
+                channel_values = [f"Channel {i}" for i in range(1, n_channels + 1)]
+                self._channel_combo['values'] = channel_values
+                self._channel_combo.config(state="readonly")
+                # Set to first channel if current selection is invalid
+                current_selection = self._channel_combo.get()
+                if current_selection not in channel_values:
+                    self._channel_combo.set(channel_values[0])
+
+    def _on_channel_config(self, channel_num):
+        """Channel configuration dialog removed - not needed in the simplified UI."""
+        pass
 
     # ──────────────────────────────────────────────────────────────────
     #  Alarm Drive Logic

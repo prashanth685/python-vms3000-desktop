@@ -1,32 +1,3 @@
-"""
-channel_configuration.py — VMS 3000
-Channel-N Configuration Dialog
-
-Exact visual + functional match to the reference "Channel-1 Configuration" /
-"Channel-2 Configuration" screenshots:
-  - CHANNEL / 'ACTIVE' / SLOT / RACK TYPE identity row
-  - a real two-tab switcher: "Transducer setup" and "Variables + Alarms".
-    Clicking a tab RAISES that tab's panel to the front (tk.Frame.tkraise
-    on two frames stacked in the same grid cell) — an instant content
-    swap, exactly like a classic Windows tab control. It is NOT a
-    "card"-style flip/slide animation.
-  - "Variables + Alarm" panel, pixel-matched to the screenshots:
-      Enable — Full Scale Range / Clamp Value for Direct & Gap rows
-      Zero Position (Gap) — spinner + "Adjust" button
-      Alert Latching / Danger Latching checkboxes
-      Delay — Alert / Danger spinners with range hints
-      Trip Multiply — spinner with range hint
-      Recorder Output — dropdown
-  - classic raised, beveled buttons (Ok, Set defaults, Cancel, Print, Help)
-  - bold blue-navy italic "VMS 3000" logo, bottom right
-
-NOTE: the "Transducer setup" tab's fields are not visible in either
-reference screenshot (both were captured with "Variables + Alarms"
-selected). The fields below are a reasonable placeholder for a proximity
-transducer setup screen — swap in the real fields/labels whenever they're
-available.
-"""
-
 import tkinter as tk
 from tkinter import ttk
 import tkinter.font as tkfont
